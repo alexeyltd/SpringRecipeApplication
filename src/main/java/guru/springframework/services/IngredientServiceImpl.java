@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service
@@ -80,15 +81,53 @@ public class IngredientServiceImpl implements IngredientService {
 							.orElseThrow(() -> new RuntimeException("UOM NOT FOUND"))); // todo address this
 			} else {
 //				add new Ingredient
-				recipe.addIngredient(ingredientCommandToIngredient.convert(ingredientCommand));
+				Ingredient ingredient = ingredientCommandToIngredient.convert(ingredientCommand);
+				ingredient.setRecipe(recipe);
+				recipe.addIngredient(ingredient);
 			}
 
 			Recipe savedRecipe = recipeRepository.save(recipe);
 
-			return ingredientToIngredientCommand.convert(savedRecipe.getIngredients().stream()
-							.filter(ingredient -> ingredient.getId().equals(ingredientCommand.getId()))
-							.findFirst()
-							.get());
+			Optional<Ingredient> savedIngredient = savedRecipe.getIngredients().stream()
+					.filter(recipeIngredients -> recipeIngredients.getId().equals(ingredientCommand.getId()))
+					.findFirst();
+
+			if (!savedIngredient.isPresent()) {
+				savedIngredient = savedRecipe.getIngredients().stream()
+						.filter(recipeIngredients -> recipeIngredients.getDescription().equals(ingredientCommand.getDescription()))
+						.filter(recipeIngredients -> recipeIngredients.getAmount().equals(ingredientCommand.getAmount()))
+						.filter(recipeIngredients -> recipeIngredients.getUom().getId().equals(ingredientCommand.getUom().getId()))
+						.findFirst();
+			}
+
+			return ingredientToIngredientCommand.convert(savedIngredient.get());
+		}
+
+	}
+
+	@Override
+	public void deleteById(final Long recipeId, final Long ingredientId) {
+		log.debug("Deleting ingredient id " + ingredientId);
+
+		Optional<Recipe> recipeOptional = recipeRepository.findById(recipeId);
+
+		if (recipeOptional.isPresent()) {
+			log.debug("Found recipe");
+			Recipe recipe = recipeOptional.get();
+
+			Optional<Ingredient> ingredientOptional = recipe.getIngredients().stream()
+					.filter(ingredient -> ingredient.getId().equals(ingredientId))
+					.findFirst();
+
+			if (ingredientOptional.isPresent()) {
+				log.debug("Found ingredient");
+				Ingredient ingredient = ingredientOptional.get();
+				ingredient.setRecipe(null);
+				recipe.getIngredients().remove(ingredient);
+				recipeRepository.save(recipe);
+			}
+		} else {
+			log.debug("Recipe is NOT FOUND " + recipeId);
 		}
 
 	}
